@@ -90,6 +90,10 @@ print(sprintf("All submitted times marathon cutoff estimate: %.2f minutes",
 
 
 
+mod_test <- glm(entry_successful ~ time_under_10k_m + gender, data = df, family="binomial")
+summary(mod_test) 
+
+
 # --- Plotting ---- 
 
 #Predictions
@@ -114,7 +118,7 @@ df_approx <- df %>% filter(precise == "no")
 
 logit_plt <- df_precise %>%
   #Dummy point to get level to show up
-  add_row(time_under_10k_m=NA, entry_successful=NA, precise="no") %>%
+  add_row(time_under_10k_m=NA, entry_successful=NA, precise="no", gender="M") %>%
   mutate(precise = factor(precise, levels=c("no", "yes"))) %>%
   ggplot(aes(x=time_under_10k_m, y=entry_successful)) +
   #Precise times
@@ -138,6 +142,7 @@ logit_plt <- df_precise %>%
                      breaks = c(0,1),
                      labels = c("No", "Yes")) + 
   coord_cartesian(xlim=c(0,7.5)) +
+  facet_wrap(~gender) + 
   ggtitle("NYC Marathon 2024 cutoff: -4:04 10k equivalent time") +
   labs(x = "Time under 10k-equivalent marathon standard (min)", caption = "/u/running_writings") + 
   #Scale yes/no
@@ -290,8 +295,61 @@ ci_precise <- boot.ci(boot_precise, type = "perc", conf=0.95)
 
 # -- again but with all data --
 boot_all <- boot(data = df, statistic = extract_prob, R = n_boot)
-ci_all <- boot.ci(boot_all, type = "perc", conf=0.95)
+ci_all <- boot.ci(boot_all, type = "perc", conf=0.90)
 
 
 ci_precise$percent[4:5]/m_mult
 ci_all$percent[4:5]/m_mult
+
+
+
+
+
+
+custom_labels <- c(
+  "M" = "Male",
+  "F" = "Female / Nonbinary"
+)
+
+
+gender_plt <- df_precise %>%
+  #Dummy point to get level to show up
+  add_row(time_under_10k_m=NA, entry_successful=NA, precise="no", gender="M") %>%
+  mutate(precise = factor(precise, levels=c("no", "yes"))) %>%
+  ggplot(aes(x=time_under_10k_m, y=entry_successful)) +
+  #Precise times
+  geom_point(aes(color=precise), pch=16,
+             size = sz2, position = position_jitter(width=0, height=0.01, seed=42)) + 
+  #Estimated times
+  geom_point(size = sz,  pch=16,
+             position = position_jitter(width=0, height=0.01, seed=42),
+             alpha = all_alf, data = df_approx, color = "#e41a1c") + 
+  geom_line(aes(y=phat_precise, color=NULL), data = df_grid, color = "#377eb8",
+            linewidth = lwd2, alpha = alf) + 
+  geom_line(aes(y=phat_all, color=NULL), data = df_grid, color = "#e41a1c",
+            linewidth = lwd, alpha = all_alf) + 
+  annotate(geom="text", x=4.2,y=0.22, label = "4:04 under 10k equivalent", 
+           size=fnt_ant, color="#377eb8", hjust=0) + 
+  #Cutoff estimate
+  geom_vline(xintercept = cutoff_est_precise, linetype = "solid", 
+             linewidth = lwd_cut, color = "#377eb8") + 
+  # geom_hline(yintercept = 0.5, linetype = "dotted", linewidth = lwd_cut, color = "#377eb8") + 
+  scale_y_continuous(limits = c(-0.02,1.02), name = "Entry successful?", 
+                     breaks = c(0,1),
+                     labels = c("No", "Yes")) + 
+  coord_cartesian(xlim=c(0,7.5)) +
+  facet_wrap(~gender, labeller = as_labeller(custom_labels)) + 
+  ggtitle("NYC Marathon 2024 cutoff: -4:04 10k equivalent time") +
+  labs(x = "Time under 10k-equivalent marathon standard (min)", caption = "/u/running_writings") + 
+  #Scale yes/no
+  scale_color_manual(values = c("yes" = "#377eb8", "no" = "#e41a1c"), drop=FALSE,
+                     name = "Precise race time: ") + 
+  theme_bw() + 
+  theme(legend.position = "bottom",
+        plot.title = element_text(hjust=0.5))
+
+gender_plt
+
+
+ggsave("Gender regression plot.png", plot=gender_plt,
+       width = 1600, height = 1200, units = "px")
