@@ -328,7 +328,7 @@ gender_plt <- df_precise %>%
             linewidth = lwd2, alpha = alf) + 
   geom_line(aes(y=phat_all, color=NULL), data = df_grid, color = "#e41a1c",
             linewidth = lwd, alpha = all_alf) + 
-  annotate(geom="text", x=4.2,y=0.22, label = "4:04 under 10k equivalent", 
+  annotate(geom="text", x=4.2,y=0.22, label = "4:04 under", 
            size=fnt_ant, color="#377eb8", hjust=0) + 
   #Cutoff estimate
   geom_vline(xintercept = cutoff_est_precise, linetype = "solid", 
@@ -337,8 +337,8 @@ gender_plt <- df_precise %>%
   scale_y_continuous(limits = c(-0.02,1.02), name = "Entry successful?", 
                      breaks = c(0,1),
                      labels = c("No", "Yes")) + 
-  coord_cartesian(xlim=c(0,7.5)) +
   facet_wrap(~gender, labeller = as_labeller(custom_labels)) + 
+  coord_cartesian(xlim=c(2,8)) +
   ggtitle("NYC Marathon 2024 cutoff: -4:04 10k equivalent time") +
   labs(x = "Time under 10k-equivalent marathon standard (min)", caption = "/u/running_writings") + 
   #Scale yes/no
@@ -353,3 +353,54 @@ gender_plt
 
 ggsave("Gender regression plot.png", plot=gender_plt,
        width = 1600, height = 1200, units = "px")
+
+
+# --- Some re estimates ---
+
+library(mgcv)
+
+df_re <- df %>% mutate(age_gender_cat = factor(age_gender_cat))
+
+
+mod_re <- gam(entry_successful ~ time_under_10k_m + s(age_gender_cat, bs="re"), 
+              data = df_re, family="binomial")
+summary(mod_re) 
+
+ng <- 1001
+
+re_pred <- expand.grid(age_gender_cat = unique(df_re$age_gender_cat),
+                       time_under_10k_m = seq(0,10, length.out=ng)) %>%
+  mutate(gender = str_sub(age_gender_cat,1,1)) %>%
+  mutate(age_cat = str_sub(age_gender_cat,2,6))
+
+
+re_pred$phat <- as.vector(predict(mod_re, newdata = re_pred, type="response"))
+
+count_df <- df %>%
+  group_by(age_gender_cat) %>%
+  count()
+
+strat_estimates <- re_pred %>% 
+  group_by(age_gender_cat) %>%
+  filter(phat >= 0.5) %>% 
+  slice(1) %>% 
+  mutate(time_under_m = time_under_10k_m/m_mult) %>%
+  left_join(count_df, by="age_gender_cat")
+
+
+
+df %>%
+  mutate(age_cat = str_sub(age_gender_cat,2,6)) %>%
+  ggplot(aes(x=time_under_10k_m, y=entry_successful)) + 
+  #strat cat line
+  geom_vline(aes(xintercept = time_under_10k_m),
+             data = strat_estimates, color = "red") + 
+  #
+  geom_point(position = position_jitter(width=0, height=0.01)) + 
+  #geom_vline(xintercept = cutoff_est_precise) +
+  coord_cartesian(xlim = c(1,8)) + 
+  facet_grid(age_cat ~ gender) + 
+  geom_line(aes(y=phat), data = re_pred, color="blue", alpha=0.6) + 
+  theme_bw()
+
+
